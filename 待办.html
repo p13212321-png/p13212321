@@ -1,0 +1,1233 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>班级待办 - 共享日历</title>
+    <!-- Tailwind CSS v3 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome -->
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3b82f6',
+                        secondary: '#64748b',
+                        success: '#22c55e',
+                        danger: '#ef4444',
+                        warning: '#f59e0b',
+                        info: '#0ea5e9',
+                        light: '#f8fafc',
+                        dark: '#1e293b',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                    animation: {
+                        'fade-in': 'fadeIn 0.3s ease-in-out',
+                        'slide-in': 'slideIn 0.3s ease-in-out',
+                    },
+                    keyframes: {
+                        fadeIn: {
+                            '0%': { opacity: '0' },
+                            '100%': { opacity: '1' },
+                        },
+                        slideIn: {
+                            '0%': { transform: 'translateY(10px)', opacity: '0' },
+                            '100%': { transform: 'translateY(0)', opacity: '1' },
+                        },
+                    },
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .glass {
+                background: rgba(255, 255, 255, 0.25);
+                backdrop-filter: blur(10px);
+                border: 1px solid rgba(255, 255, 255, 0.18);
+            }
+            .calendar-day {
+                aspect-ratio: 1/1;
+            }
+            .calendar-day:hover:not(.calendar-day-disabled) {
+                transform: scale(1.05);
+                z-index: 10;
+            }
+            .task-item {
+                transition: all 0.2s ease;
+            }
+            .task-item:hover {
+                transform: translateX(5px);
+            }
+            .priority-high {
+                border-left: 4px solid theme('colors.danger');
+            }
+            .priority-medium {
+                border-left: 4px solid theme('colors.warning');
+            }
+            .priority-low {
+                border-left: 4px solid theme('colors.success');
+            }
+            .date-marked {
+                position: relative;
+            }
+            .date-marked::after {
+                content: '';
+                position: absolute;
+                bottom: 5px;
+                left: 50%;
+                transform: translateX(-50%);
+                width: 6px;
+                height: 6px;
+                border-radius: 50%;
+            }
+            .date-marked-high::after {
+                background-color: theme('colors.danger');
+            }
+            .date-marked-medium::after {
+                background-color: theme('colors.warning');
+            }
+            .date-marked-low::after {
+                background-color: theme('colors.success');
+            }
+            .date-today {
+                border: 2px solid theme('colors.primary');
+                font-weight: bold;
+            }
+            .scrollbar-hide::-webkit-scrollbar {
+                display: none;
+            }
+            .scrollbar-hide {
+                -ms-overflow-style: none;
+                scrollbar-width: none;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 min-h-screen">
+    <!-- 顶部导航栏 -->
+    <header class="bg-white shadow-md sticky top-0 z-50">
+        <div class="container mx-auto px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+                <i class="fa fa-calendar-check-o text-primary text-2xl"></i>
+                <h1 class="text-xl font-bold text-primary">班级待办</h1>
+            </div>
+            
+            <div class="flex items-center space-x-4">
+                <!-- 视图切换 -->
+                <div class="flex bg-gray-100 rounded-lg p-1">
+                    <button id="view-month" class="view-btn px-3 py-1 rounded-md bg-primary text-white">
+                        <i class="fa fa-th"></i> 月
+                    </button>
+                    <button id="view-week" class="view-btn px-3 py-1 rounded-md text-gray-600 hover:bg-gray-200">
+                        <i class="fa fa-calendar"></i> 周
+                    </button>
+                    <button id="view-day" class="view-btn px-3 py-1 rounded-md text-gray-600 hover:bg-gray-200">
+                        <i class="fa fa-calendar-o"></i> 日
+                    </button>
+                </div>
+                
+                <!-- 共享按钮 -->
+                <button id="share-btn" class="bg-primary hover:bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center transition-colors">
+                    <i class="fa fa-share-alt mr-2"></i> 共享
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- 主内容区 -->
+    <main class="container mx-auto px-4 py-6 flex flex-col lg:flex-row gap-6">
+        <!-- 左侧待办列表 -->
+        <aside class="lg:w-1/4 bg-white rounded-xl shadow-md p-4 h-fit">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-semibold">待办列表</h2>
+                <button id="add-task-btn" class="bg-primary hover:bg-blue-600 text-white p-2 rounded-full transition-colors">
+                    <i class="fa fa-plus"></i>
+                </button>
+            </div>
+            
+            <div class="space-y-2 max-h-[500px] overflow-y-auto scrollbar-hide" id="task-list">
+                <!-- 待办事项将通过JavaScript动态生成 -->
+                <div class="text-center text-gray-500 py-8">
+                    <i class="fa fa-clipboard-list text-4xl mb-2"></i>
+                    <p>暂无待办事项</p>
+                    <p class="text-sm">点击右上角添加按钮创建新任务</p>
+                </div>
+            </div>
+        </aside>
+        
+        <!-- 中间日历区域 -->
+        <section class="lg:w-2/4 bg-white rounded-xl shadow-md p-4">
+            <!-- 日历导航 -->
+            <div class="flex justify-between items-center mb-6">
+                <button id="prev-month" class="p-2 rounded-full hover:bg-gray-100">
+                    <i class="fa fa-chevron-left"></i>
+                </button>
+                
+                <div class="text-center">
+                    <h2 id="current-month" class="text-xl font-semibold"></h2>
+                    <p id="current-year" class="text-sm text-gray-500"></p>
+                </div>
+                
+                <button id="next-month" class="p-2 rounded-full hover:bg-gray-100">
+                    <i class="fa fa-chevron-right"></i>
+                </button>
+            </div>
+            
+            <!-- 日历头部 - 星期 -->
+            <div class="grid grid-cols-7 gap-1 mb-2">
+                <div class="text-center text-sm font-medium text-gray-500">周日</div>
+                <div class="text-center text-sm font-medium text-gray-500">周一</div>
+                <div class="text-center text-sm font-medium text-gray-500">周二</div>
+                <div class="text-center text-sm font-medium text-gray-500">周三</div>
+                <div class="text-center text-sm font-medium text-gray-500">周四</div>
+                <div class="text-center text-sm font-medium text-gray-500">周五</div>
+                <div class="text-center text-sm font-medium text-gray-500">周六</div>
+            </div>
+            
+            <!-- 日历内容 -->
+            <div id="calendar-grid" class="grid grid-cols-7 gap-1">
+                <!-- 日历日期将通过JavaScript动态生成 -->
+            </div>
+        </section>
+        
+        <!-- 右侧任务详情 -->
+        <aside class="lg:w-1/4 bg-white rounded-xl shadow-md p-4 h-fit">
+            <div id="task-detail-empty" class="text-center text-gray-500 py-8">
+                <i class="fa fa-calendar text-4xl mb-2"></i>
+                <p>请选择日期查看详情</p>
+            </div>
+            
+            <div id="task-detail" class="hidden">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 id="detail-date" class="text-lg font-semibold"></h2>
+                    <button id="add-task-detail-btn" class="bg-primary hover:bg-blue-600 text-white px-3 py-1 rounded-lg text-sm transition-colors">
+                        <i class="fa fa-plus mr-1"></i> 添加任务
+                    </button>
+                </div>
+                
+                <div class="space-y-3" id="detail-tasks">
+                    <!-- 详情任务将通过JavaScript动态生成 -->
+                </div>
+            </div>
+        </aside>
+    </main>
+
+    <!-- 添加/编辑任务模态框 -->
+    <div id="task-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center hidden">
+        <div class="bg-white rounded-xl shadow-xl p-6 w-full max-w-md animate-fade-in">
+            <div class="flex justify-between items-center mb-4">
+                <h3 id="modal-title" class="text-xl font-semibold">添加任务</h3>
+                <button id="close-modal" class="text-gray-500 hover:text-gray-700">
+                    <i class="fa fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <form id="task-form">
+                <input type="hidden" id="task-id">
+                
+                <div class="mb-4">
+                    <label for="task-title" class="block text-sm font-medium text-gray-700 mb-1">标题</label>
+                    <input type="text" id="task-title" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" required>
+                </div>
+                
+                <div class="mb-4">
+                    <label for="task-description" class="block text-sm font-medium text-gray-700 mb-1">描述</label>
+                    <textarea id="task-description" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"></textarea>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label for="task-date" class="block text-sm font-medium text-gray-700 mb-1">日期</label>
+                        <input type="date" id="task-date" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" required>
+                    </div>
+                    
+                    <div>
+                        <label for="task-priority" class="block text-sm font-medium text-gray-700 mb-1">优先级</label>
+                        <select id="task-priority" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary">
+                            <option value="low">低</option>
+                            <option value="medium" selected>中</option>
+                            <option value="high">高</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="flex justify-end space-x-3">
+                    <button type="button" id="cancel-task" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100">取消</button>
+                    <button type="submit" class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-600">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 共享模态框 -->
+    <div id="share-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center hidden">
+        <div class="bg-white rounded-xl shadow-xl p-6 w-full max-w-md animate-fade-in">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-semibold">共享日历</h3>
+                <button id="close-share-modal" class="text-gray-500 hover:text-gray-700">
+                    <i class="fa fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <div class="mb-4">
+                <p class="text-gray-600 mb-2">复制以下链接分享给他人：</p>
+                <div class="flex">
+                    <input type="text" id="share-link" class="flex-1 px-3 py-2 border border-gray-300 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-primary" readonly>
+                    <button id="copy-link" class="bg-primary hover:bg-blue-600 text-white px-4 py-2 rounded-r-lg">
+                        <i class="fa fa-copy"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                <h4 class="font-medium text-blue-800 mb-1">共享说明</h4>
+                <p class="text-sm text-blue-700">
+                    通过此链接，他人可以查看和编辑这个日历。请不要分享给未授权的人员。
+                </p>
+            </div>
+            
+            <div class="flex justify-end">
+                <button id="cancel-share" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 通知提示 -->
+    <div id="notification" class="fixed bottom-4 right-4 bg-white rounded-lg shadow-lg p-4 max-w-sm transform translate-y-full opacity-0 transition-all duration-300 z-50">
+        <div class="flex items-start">
+            <div id="notification-icon" class="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center mr-3">
+                <i id="notification-icon-i" class="fa"></i>
+            </div>
+            <div class="flex-1">
+                <h4 id="notification-title" class="font-medium"></h4>
+                <p id="notification-message" class="text-sm text-gray-600 mt-1"></p>
+            </div>
+            <button id="close-notification" class="text-gray-400 hover:text-gray-600 ml-4">
+                <i class="fa fa-times"></i>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // 全局变量
+        let currentDate = new Date();
+        let selectedDate = null;
+        let tasks = [];
+        let currentView = 'month';
+        let shareKey = null;
+        
+        // DOM元素
+        const calendarGrid = document.getElementById('calendar-grid');
+        const currentMonthEl = document.getElementById('current-month');
+        const currentYearEl = document.getElementById('current-year');
+        const taskListEl = document.getElementById('task-list');
+        const taskDetailEl = document.getElementById('task-detail');
+        const taskDetailEmptyEl = document.getElementById('task-detail-empty');
+        const detailDateEl = document.getElementById('detail-date');
+        const detailTasksEl = document.getElementById('detail-tasks');
+        const taskModal = document.getElementById('task-modal');
+        const taskForm = document.getElementById('task-form');
+        const modalTitle = document.getElementById('modal-title');
+        const taskIdInput = document.getElementById('task-id');
+        const taskTitleInput = document.getElementById('task-title');
+        const taskDescriptionInput = document.getElementById('task-description');
+        const taskDateInput = document.getElementById('task-date');
+        const taskPriorityInput = document.getElementById('task-priority');
+        const shareModal = document.getElementById('share-modal');
+        const shareLinkInput = document.getElementById('share-link');
+        const notification = document.getElementById('notification');
+        const notificationTitle = document.getElementById('notification-title');
+        const notificationMessage = document.getElementById('notification-message');
+        const notificationIcon = document.getElementById('notification-icon');
+        const notificationIconI = document.getElementById('notification-icon-i');
+        
+        // 初始化应用
+        function initApp() {
+            // 检查URL中是否有共享密钥
+            const urlParams = new URLSearchParams(window.location.search);
+            shareKey = urlParams.get('shareKey');
+            
+            // 加载数据
+            loadData();
+            
+            // 渲染日历
+            renderCalendar();
+            
+            // 渲染任务列表
+            renderTaskList();
+            
+            // 设置事件监听器
+            setupEventListeners();
+            
+            // 检查是否有任务需要提醒
+            checkReminders();
+        }
+        
+        // 加载数据
+        function loadData() {
+            let storageKey = 'classTodoApp';
+            
+            // 如果有共享密钥，使用共享密钥作为存储键
+            if (shareKey) {
+                storageKey = `classTodoApp_${shareKey}`;
+            }
+            
+            // 从localStorage加载数据
+            const savedData = localStorage.getItem(storageKey);
+            
+            if (savedData) {
+                const data = JSON.parse(savedData);
+                tasks = data.tasks || [];
+            } else {
+                // 初始化示例数据
+                const today = new Date();
+                const tomorrow = new Date();
+                tomorrow.setDate(today.getDate() + 1);
+                
+                tasks = [
+                    {
+                        id: generateId(),
+                        title: '班级会议',
+                        description: '讨论下周活动安排',
+                        date: formatDate(today),
+                        priority: 'high',
+                        completed: false,
+                        createdAt: new Date().toISOString()
+                    },
+                    {
+                        id: generateId(),
+                        title: '数学作业',
+                        description: '完成练习册第25页',
+                        date: formatDate(tomorrow),
+                        priority: 'medium',
+                        completed: false,
+                        createdAt: new Date().toISOString()
+                    }
+                ];
+                
+                // 保存初始数据
+                saveData();
+            }
+        }
+        
+        // 保存数据
+        function saveData() {
+            let storageKey = 'classTodoApp';
+            
+            // 如果有共享密钥，使用共享密钥作为存储键
+            if (shareKey) {
+                storageKey = `classTodoApp_${shareKey}`;
+            }
+            
+            // 保存到localStorage
+            localStorage.setItem(storageKey, JSON.stringify({
+                tasks: tasks
+            }));
+            
+            // 如果有共享密钥，同时保存到主存储中（用于管理共享链接）
+            if (shareKey) {
+                const mainData = JSON.parse(localStorage.getItem('classTodoApp') || '{"sharedWith":[]}');
+                const shareExists = mainData.sharedWith.some(item => item.key === shareKey);
+                
+                if (!shareExists) {
+                    mainData.sharedWith.push({
+                        key: shareKey,
+                        createdAt: new Date().toISOString(),
+                        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // 30天后过期
+                    });
+                    
+                    localStorage.setItem('classTodoApp', JSON.stringify(mainData));
+                }
+            }
+        }
+        
+        // 渲染日历
+        function renderCalendar() {
+            // 清空日历
+            calendarGrid.innerHTML = '';
+            
+            // 设置当前月份和年份
+            const monthNames = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
+            currentMonthEl.textContent = monthNames[currentDate.getMonth()];
+            currentYearEl.textContent = currentDate.getFullYear();
+            
+            // 获取当前月份的第一天
+            const firstDay = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+            
+            // 获取当前月份的最后一天
+            const lastDay = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+            
+            // 获取当前月份第一天是星期几（0-6，0是星期日）
+            const firstDayOfWeek = firstDay.getDay();
+            
+            // 添加上个月的日期作为填充
+            for (let i = 0; i < firstDayOfWeek; i++) {
+                const dateEl = document.createElement('div');
+                dateEl.classList.add('calendar-day', 'calendar-day-disabled', 'flex', 'items-center', 'justify-center', 'text-gray-300', 'bg-gray-50', 'rounded-lg');
+                
+                const prevMonthLastDay = new Date(currentDate.getFullYear(), currentDate.getMonth(), 0).getDate();
+                dateEl.textContent = prevMonthLastDay - (firstDayOfWeek - i - 1);
+                
+                calendarGrid.appendChild(dateEl);
+            }
+            
+            // 添加当前月份的日期
+            for (let i = 1; i <= lastDay.getDate(); i++) {
+                const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), i);
+                const dateStr = formatDate(date);
+                const dateEl = document.createElement('div');
+                
+                // 基础样式
+                dateEl.classList.add('calendar-day', 'flex', 'flex-col', 'items-center', 'justify-center', 'p-1', 'rounded-lg', 'cursor-pointer', 'transition-transform');
+                
+                // 检查是否是今天
+                const today = new Date();
+                if (date.getDate() === today.getDate() && 
+                    date.getMonth() === today.getMonth() && 
+                    date.getFullYear() === today.getFullYear()) {
+                    dateEl.classList.add('date-today');
+                }
+                
+                // 检查是否被选中
+                if (selectedDate && dateStr === selectedDate) {
+                    dateEl.classList.add('bg-primary', 'text-white');
+                } else {
+                    dateEl.classList.add('hover:bg-gray-100');
+                }
+                
+                // 检查是否有任务
+                const tasksOnDate = tasks.filter(task => task.date === dateStr);
+                if (tasksOnDate.length > 0) {
+                    // 找出最高优先级
+                    let highestPriority = 'low';
+                    if (tasksOnDate.some(task => task.priority === 'high')) {
+                        highestPriority = 'high';
+                    } else if (tasksOnDate.some(task => task.priority === 'medium')) {
+                        highestPriority = 'medium';
+                    }
+                    
+                    dateEl.classList.add('date-marked', `date-marked-${highestPriority}`);
+                }
+                
+                // 添加日期数字
+                const dateNumberEl = document.createElement('div');
+                dateNumberEl.classList.add('text-lg');
+                dateNumberEl.textContent = i;
+                dateEl.appendChild(dateNumberEl);
+                
+                // 添加任务数量指示器
+                if (tasksOnDate.length > 0) {
+                    const taskCountEl = document.createElement('div');
+                    taskCountEl.classList.add('text-xs', 'mt-1', 'rounded-full', 'px-2', 'py-0.5');
+                    
+                    // 根据任务数量和优先级设置样式
+                    if (tasksOnDate.some(task => task.priority === 'high')) {
+                        taskCountEl.classList.add('bg-red-100', 'text-red-800');
+                    } else if (tasksOnDate.some(task => task.priority === 'medium')) {
+                        taskCountEl.classList.add('bg-yellow-100', 'text-yellow-800');
+                    } else {
+                        taskCountEl.classList.add('bg-green-100', 'text-green-800');
+                    }
+                    
+                    taskCountEl.textContent = tasksOnDate.length;
+                    dateEl.appendChild(taskCountEl);
+                }
+                
+                // 添加点击事件
+                dateEl.addEventListener('click', () => {
+                    selectDate(dateStr);
+                });
+                
+                calendarGrid.appendChild(dateEl);
+            }
+            
+            // 计算需要添加的下个月日期数量
+            const totalDaysAdded = firstDayOfWeek + lastDay.getDate();
+            const remainingCells = 7 - (totalDaysAdded % 7);
+            const nextMonthDaysToAdd = remainingCells === 7 ? 0 : remainingCells;
+            
+            // 添加下个月的日期作为填充
+            for (let i = 1; i <= nextMonthDaysToAdd; i++) {
+                const dateEl = document.createElement('div');
+                dateEl.classList.add('calendar-day', 'calendar-day-disabled', 'flex', 'items-center', 'justify-center', 'text-gray-300', 'bg-gray-50', 'rounded-lg');
+                dateEl.textContent = i;
+                calendarGrid.appendChild(dateEl);
+            }
+        }
+        
+        // 渲染任务列表
+        function renderTaskList() {
+            // 清空任务列表
+            taskListEl.innerHTML = '';
+            
+            // 如果没有任务，显示空状态
+            if (tasks.length === 0) {
+                taskListEl.innerHTML = `
+                    <div class="text-center text-gray-500 py-8">
+                        <i class="fa fa-clipboard-list text-4xl mb-2"></i>
+                        <p>暂无待办事项</p>
+                        <p class="text-sm">点击右上角添加按钮创建新任务</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            // 按日期排序任务（最近的在前）
+            const sortedTasks = [...tasks].sort((a, b) => {
+                if (a.date !== b.date) {
+                    return new Date(a.date) - new Date(b.date);
+                }
+                
+                // 同一天的任务按优先级排序
+                const priorityOrder = { high: 0, medium: 1, low: 2 };
+                return priorityOrder[a.priority] - priorityOrder[b.priority];
+            });
+            
+            // 只显示前10个任务
+            const recentTasks = sortedTasks.slice(0, 10);
+            
+            // 添加任务到列表
+            recentTasks.forEach(task => {
+                const taskEl = createTaskElement(task);
+                taskListEl.appendChild(taskEl);
+            });
+            
+            // 如果有更多任务，显示"查看全部"按钮
+            if (sortedTasks.length > 10) {
+                const viewAllEl = document.createElement('div');
+                viewAllEl.classList.add('text-center', 'mt-4');
+                viewAllEl.innerHTML = `
+                    <button id="view-all-tasks" class="text-primary hover:text-blue-700 text-sm">
+                        查看全部 ${sortedTasks.length} 个任务 <i class="fa fa-angle-down ml-1"></i>
+                    </button>
+                `;
+                taskListEl.appendChild(viewAllEl);
+                
+                // 添加点击事件
+                document.getElementById('view-all-tasks').addEventListener('click', () => {
+                    // 显示所有任务
+                    taskListEl.innerHTML = '';
+                    sortedTasks.forEach(task => {
+                        const taskEl = createTaskElement(task);
+                        taskListEl.appendChild(taskEl);
+                    });
+                });
+            }
+        }
+        
+        // 创建任务元素
+        function createTaskElement(task) {
+            const taskEl = document.createElement('div');
+            taskEl.classList.add('task-item', 'bg-gray-50', 'p-3', 'rounded-lg', 'shadow-sm', `priority-${task.priority}`);
+            
+            // 如果任务已完成，添加完成样式
+            if (task.completed) {
+                taskEl.classList.add('opacity-70');
+            }
+            
+            // 格式化日期
+            const taskDate = new Date(task.date);
+            const formattedDate = `${taskDate.getMonth() + 1}月${taskDate.getDate()}日`;
+            
+            // 设置任务内容
+            taskEl.innerHTML = `
+                <div class="flex items-start">
+                    <div class="flex-shrink-0 mr-3">
+                        <input type="checkbox" class="task-checkbox w-5 h-5 rounded text-primary focus:ring-primary" 
+                               data-id="${task.id}" ${task.completed ? 'checked' : ''}>
+                    </div>
+                    <div class="flex-1 ${task.completed ? 'line-through text-gray-500' : ''}">
+                        <h4 class="font-medium ${task.priority === 'high' ? 'text-red-600' : task.priority === 'medium' ? 'text-yellow-600' : 'text-green-600'}">
+                            ${task.title}
+                        </h4>
+                        <p class="text-sm text-gray-500 mt-1">${formattedDate}</p>
+                        ${task.description ? `<p class="text-sm text-gray-600 mt-1">${task.description}</p>` : ''}
+                    </div>
+                    <div class="flex-shrink-0 ml-2">
+                        <button class="edit-task p-1 text-gray-400 hover:text-blue-600" data-id="${task.id}">
+                            <i class="fa fa-pencil"></i>
+                        </button>
+                        <button class="delete-task p-1 text-gray-400 hover:text-red-600" data-id="${task.id}">
+                            <i class="fa fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            // 添加事件监听器
+            const checkbox = taskEl.querySelector('.task-checkbox');
+            checkbox.addEventListener('change', () => {
+                toggleTaskCompletion(task.id);
+            });
+            
+            const editBtn = taskEl.querySelector('.edit-task');
+            editBtn.addEventListener('click', () => {
+                openEditTaskModal(task.id);
+            });
+            
+            const deleteBtn = taskEl.querySelector('.delete-task');
+            deleteBtn.addEventListener('click', () => {
+                deleteTask(task.id);
+            });
+            
+            return taskEl;
+        }
+        
+        // 渲染任务详情
+        function renderTaskDetail(date) {
+            // 显示详情区域，隐藏空状态
+            taskDetailEl.classList.remove('hidden');
+            taskDetailEmptyEl.classList.add('hidden');
+            
+            // 设置详情日期
+            const detailDate = new Date(date);
+            detailDateEl.textContent = `${detailDate.getFullYear()}年${detailDate.getMonth() + 1}月${detailDate.getDate()}日`;
+            
+            // 清空详情任务列表
+            detailTasksEl.innerHTML = '';
+            
+            // 获取该日期的任务
+            const tasksOnDate = tasks.filter(task => task.date === date);
+            
+            // 如果没有任务，显示空状态
+            if (tasksOnDate.length === 0) {
+                detailTasksEl.innerHTML = `
+                    <div class="text-center text-gray-500 py-8">
+                        <i class="fa fa-calendar-o text-4xl mb-2"></i>
+                        <p>这一天没有待办事项</p>
+                        <p class="text-sm">点击"添加任务"按钮创建新任务</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            // 按优先级排序任务
+            const sortedTasks = [...tasksOnDate].sort((a, b) => {
+                const priorityOrder = { high: 0, medium: 1, low: 2 };
+                return priorityOrder[a.priority] - priorityOrder[b.priority];
+            });
+            
+            // 添加任务到详情列表
+            sortedTasks.forEach(task => {
+                const taskEl = document.createElement('div');
+                taskEl.classList.add('task-item', 'bg-gray-50', 'p-3', 'rounded-lg', 'shadow-sm', `priority-${task.priority}`);
+                
+                // 如果任务已完成，添加完成样式
+                if (task.completed) {
+                    taskEl.classList.add('opacity-70');
+                }
+                
+                // 设置任务内容
+                taskEl.innerHTML = `
+                    <div class="flex items-start">
+                        <div class="flex-shrink-0 mr-3">
+                            <input type="checkbox" class="task-checkbox w-5 h-5 rounded text-primary focus:ring-primary" 
+                                   data-id="${task.id}" ${task.completed ? 'checked' : ''}>
+                        </div>
+                        <div class="flex-1 ${task.completed ? 'line-through text-gray-500' : ''}">
+                            <h4 class="font-medium ${task.priority === 'high' ? 'text-red-600' : task.priority === 'medium' ? 'text-yellow-600' : 'text-green-600'}">
+                                ${task.title}
+                            </h4>
+                            ${task.description ? `<p class="text-sm text-gray-600 mt-1">${task.description}</p>` : ''}
+                        </div>
+                        <div class="flex-shrink-0 ml-2">
+                            <button class="edit-task p-1 text-gray-400 hover:text-blue-600" data-id="${task.id}">
+                                <i class="fa fa-pencil"></i>
+                            </button>
+                            <button class="delete-task p-1 text-gray-400 hover:text-red-600" data-id="${task.id}">
+                                <i class="fa fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+                
+                // 添加事件监听器
+                const checkbox = taskEl.querySelector('.task-checkbox');
+                checkbox.addEventListener('change', () => {
+                    toggleTaskCompletion(task.id);
+                });
+                
+                const editBtn = taskEl.querySelector('.edit-task');
+                editBtn.addEventListener('click', () => {
+                    openEditTaskModal(task.id);
+                });
+                
+                const deleteBtn = taskEl.querySelector('.delete-task');
+                deleteBtn.addEventListener('click', () => {
+                    deleteTask(task.id);
+                });
+                
+                detailTasksEl.appendChild(taskEl);
+            });
+        }
+        
+        // 选择日期
+        function selectDate(dateStr) {
+            selectedDate = dateStr;
+            renderCalendar();
+            renderTaskDetail(dateStr);
+        }
+        
+        // 打开添加任务模态框
+        function openAddTaskModal(date = null) {
+            modalTitle.textContent = '添加任务';
+            taskForm.reset();
+            taskIdInput.value = '';
+            
+            // 如果提供了日期，设置日期输入框
+            if (date) {
+                taskDateInput.value = date;
+            } else {
+                // 默认设置为今天
+                const today = new Date();
+                taskDateInput.value = formatDate(today);
+            }
+            
+            // 显示模态框
+            taskModal.classList.remove('hidden');
+            taskTitleInput.focus();
+        }
+        
+        // 打开编辑任务模态框
+        function openEditTaskModal(taskId) {
+            const task = tasks.find(t => t.id === taskId);
+            
+            if (!task) return;
+            
+            modalTitle.textContent = '编辑任务';
+            taskIdInput.value = task.id;
+            taskTitleInput.value = task.title;
+            taskDescriptionInput.value = task.description || '';
+            taskDateInput.value = task.date;
+            taskPriorityInput.value = task.priority;
+            
+            // 显示模态框
+            taskModal.classList.remove('hidden');
+            taskTitleInput.focus();
+        }
+        
+        // 关闭任务模态框
+        function closeTaskModal() {
+            taskModal.classList.add('hidden');
+        }
+        
+        // 添加任务
+        function addTask(taskData) {
+            const newTask = {
+                id: generateId(),
+                title: taskData.title,
+                description: taskData.description,
+                date: taskData.date,
+                priority: taskData.priority,
+                completed: false,
+                createdAt: new Date().toISOString()
+            };
+            
+            tasks.push(newTask);
+            saveData();
+            
+            // 重新渲染日历和任务列表
+            renderCalendar();
+            renderTaskList();
+            
+            // 如果添加的任务是在选中的日期，重新渲染任务详情
+            if (selectedDate === taskData.date) {
+                renderTaskDetail(selectedDate);
+            }
+            
+            // 显示通知
+            showNotification('成功', '任务已添加', 'success');
+            
+            // 设置提醒
+            if (taskData.priority === 'high') {
+                setReminder(newTask);
+            }
+        }
+        
+        // 更新任务
+        function updateTask(taskId, taskData) {
+            const taskIndex = tasks.findIndex(t => t.id === taskId);
+            
+            if (taskIndex === -1) return;
+            
+            const updatedTask = {
+                ...tasks[taskIndex],
+                title: taskData.title,
+                description: taskData.description,
+                date: taskData.date,
+                priority: taskData.priority
+            };
+            
+            tasks[taskIndex] = updatedTask;
+            saveData();
+            
+            // 重新渲染日历和任务列表
+            renderCalendar();
+            renderTaskList();
+            
+            // 如果更新的任务是在选中的日期，重新渲染任务详情
+            if (selectedDate === taskData.date || selectedDate === tasks[taskIndex].date) {
+                renderTaskDetail(selectedDate);
+            }
+            
+            // 显示通知
+            showNotification('成功', '任务已更新', 'success');
+            
+            // 更新提醒
+            if (taskData.priority === 'high') {
+                setReminder(updatedTask);
+            }
+        }
+        
+        // 删除任务
+        function deleteTask(taskId) {
+            if (!confirm('确定要删除这个任务吗？')) return;
+            
+            try {
+                const taskIndex = tasks.findIndex(t => t.id === taskId);
+                
+                if (taskIndex === -1) {
+                    showNotification('错误', '未找到任务', 'error');
+                    return;
+                }
+                
+                // 获取任务的日期，用于后续刷新
+                const taskDate = tasks[taskIndex].date;
+                
+                tasks.splice(taskIndex, 1);
+                saveData();
+                
+                // 重新渲染日历和任务列表
+                renderCalendar();
+                renderTaskList();
+                
+                // 如果删除的任务是在选中的日期，重新渲染任务详情
+                if (selectedDate === taskDate) {
+                    renderTaskDetail(selectedDate);
+                }
+                
+                // 显示通知
+                showNotification('成功', '任务已删除', 'success');
+            } catch (error) {
+                console.error('删除任务时出错:', error);
+                showNotification('错误', '删除任务失败', 'error');
+            }
+        }
+        
+        // 切换任务完成状态
+        function toggleTaskCompletion(taskId) {
+            const taskIndex = tasks.findIndex(t => t.id === taskId);
+            
+            if (taskIndex === -1) return;
+            
+            tasks[taskIndex].completed = !tasks[taskIndex].completed;
+            saveData();
+            
+            // 重新渲染任务列表和详情
+            renderTaskList();
+            
+            if (selectedDate === tasks[taskIndex].date) {
+                renderTaskDetail(selectedDate);
+            }
+            
+            // 显示通知
+            const status = tasks[taskIndex].completed ? '已完成' : '未完成';
+            showNotification('状态更新', `任务已标记为${status}`, 'info');
+        }
+        
+        // 生成共享链接
+        function generateShareLink() {
+            // 如果已经有共享密钥，直接使用
+            if (!shareKey) {
+                shareKey = generateId();
+            }
+            
+            // 创建共享链接
+            const shareLink = `${window.location.origin}${window.location.pathname}?shareKey=${shareKey}`;
+            
+            // 显示共享链接
+            shareLinkInput.value = shareLink;
+            
+            // 显示共享模态框
+            shareModal.classList.remove('hidden');
+        }
+        
+        // 复制共享链接
+        function copyShareLink() {
+            shareLinkInput.select();
+            document.execCommand('copy');
+            
+            // 显示通知
+            showNotification('成功', '链接已复制到剪贴板', 'success');
+        }
+        
+        // 关闭共享模态框
+        function closeShareModal() {
+            shareModal.classList.add('hidden');
+        }
+        
+        // 显示通知
+        function showNotification(title, message, type = 'info') {
+            // 设置通知内容
+            notificationTitle.textContent = title;
+            notificationMessage.textContent = message;
+            
+            // 设置通知图标和颜色
+            switch (type) {
+                case 'success':
+                    notificationIcon.className = 'flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center mr-3 bg-green-100';
+                    notificationIconI.className = 'fa fa-check text-green-600';
+                    break;
+                case 'error':
+                    notificationIcon.className = 'flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center mr-3 bg-red-100';
+                    notificationIconI.className = 'fa fa-times text-red-600';
+                    break;
+                case 'warning':
+                    notificationIcon.className = 'flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center mr-3 bg-yellow-100';
+                    notificationIconI.className = 'fa fa-exclamation text-yellow-600';
+                    break;
+                default:
+                    notificationIcon.className = 'flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center mr-3 bg-blue-100';
+                    notificationIconI.className = 'fa fa-info text-blue-600';
+            }
+            
+            // 显示通知
+            notification.classList.remove('translate-y-full', 'opacity-0');
+            
+            // 3秒后自动隐藏
+            setTimeout(() => {
+                hideNotification();
+            }, 3000);
+        }
+        
+        // 隐藏通知
+        function hideNotification() {
+            notification.classList.add('translate-y-full', 'opacity-0');
+        }
+        
+        // 设置提醒
+        function setReminder(task) {
+            const taskDate = new Date(task.date);
+            const now = new Date();
+            
+            // 计算任务日期和当前日期的时间差
+            const timeDiff = taskDate - now;
+            
+            // 如果任务日期在未来，设置提醒
+            if (timeDiff > 0) {
+                setTimeout(() => {
+                    // 检查任务是否仍然存在且未完成
+                    const existingTask = tasks.find(t => t.id === task.id);
+                    if (existingTask && !existingTask.completed) {
+                        // 显示浏览器通知
+                        if (Notification.permission === 'granted') {
+                            new Notification('任务提醒', {
+                                body: `${task.title} 将于今天到期`,
+                                icon: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJjdXJyZW50Q29sb3IiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSIzIj48L2NpcmNsZT48cGF0aCBkPSJNMTIgMTV2LTUiPjwvcGF0aD48cGF0aCBkPSJNMTIgMTloLjAwMSI+PC9wYXRoPjwvc3ZnPg==',
+                                requireInteraction: true
+                            });
+                        } else if (Notification.permission !== 'denied') {
+                            // 请求通知权限
+                            Notification.requestPermission().then(permission => {
+                                if (permission === 'granted') {
+                                    new Notification('任务提醒', {
+                                        body: `${task.title} 将于今天到期`,
+                                        icon: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJjdXJyZW50Q29sb3IiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSIzIj48L2NpcmNsZT48cGF0aCBkPSJNMTIgMTV2LTUiPjwvcGF0aD48cGF0aCBkPSJNMTIgMTloLjAwMSI+PC9wYXRoPjwvc3ZnPg==',
+                                        requireInteraction: true
+                                    });
+                                }
+                            });
+                        }
+                        
+                        // 显示应用内通知
+                        showNotification('任务提醒', `${task.title} 将于今天到期`, 'warning');
+                    }
+                }, timeDiff - 24 * 60 * 60 * 1000); // 提前一天提醒
+            }
+        }
+        
+        // 检查提醒
+        function checkReminders() {
+            // 请求通知权限
+            if (Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+                Notification.requestPermission();
+            }
+            
+            // 检查今天和明天的任务
+            const today = new Date();
+            const tomorrow = new Date();
+            tomorrow.setDate(today.getDate() + 1);
+            
+            const todayStr = formatDate(today);
+            const tomorrowStr = formatDate(tomorrow);
+            
+            // 检查今天的高优先级任务
+            const todayHighPriorityTasks = tasks.filter(task => 
+                task.date === todayStr && 
+                task.priority === 'high' && 
+                !task.completed
+            );
+            
+            // 检查明天的高优先级任务
+            const tomorrowHighPriorityTasks = tasks.filter(task => 
+                task.date === tomorrowStr && 
+                task.priority === 'high' && 
+                !task.completed
+            );
+            
+            // 如果有今天的高优先级任务，显示提醒
+            if (todayHighPriorityTasks.length > 0) {
+                showNotification(
+                    '今日任务提醒',
+                    `您有 ${todayHighPriorityTasks.length} 个高优先级任务今天到期`,
+                    'warning'
+                );
+            }
+            
+            // 如果有明天的高优先级任务，显示提醒
+            if (tomorrowHighPriorityTasks.length > 0) {
+                showNotification(
+                    '明日任务提醒',
+                    `您有 ${tomorrowHighPriorityTasks.length} 个高优先级任务明天到期`,
+                    'info'
+                );
+            }
+        }
+        
+        // 设置事件监听器
+        function setupEventListeners() {
+            // 日历导航
+            document.getElementById('prev-month').addEventListener('click', () => {
+                currentDate.setMonth(currentDate.getMonth() - 1);
+                renderCalendar();
+            });
+            
+            document.getElementById('next-month').addEventListener('click', () => {
+                currentDate.setMonth(currentDate.getMonth() + 1);
+                renderCalendar();
+            });
+            
+            // 视图切换
+            document.getElementById('view-month').addEventListener('click', () => {
+                setCurrentView('month');
+            });
+            
+            document.getElementById('view-week').addEventListener('click', () => {
+                setCurrentView('week');
+            });
+            
+            document.getElementById('view-day').addEventListener('click', () => {
+                setCurrentView('day');
+            });
+            
+            // 添加任务按钮
+            document.getElementById('add-task-btn').addEventListener('click', () => {
+                openAddTaskModal();
+            });
+            
+            document.getElementById('add-task-detail-btn').addEventListener('click', () => {
+                if (selectedDate) {
+                    openAddTaskModal(selectedDate);
+                } else {
+                    openAddTaskModal();
+                }
+            });
+            
+            // 任务表单提交
+            taskForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                
+                const taskData = {
+                    title: taskTitleInput.value,
+                    description: taskDescriptionInput.value,
+                    date: taskDateInput.value,
+                    priority: taskPriorityInput.value
+                };
+                
+                const taskId = taskIdInput.value;
+                
+                try {
+                    if (taskId) {
+                        updateTask(taskId, taskData);
+                    } else {
+                        addTask(taskData);
+                    }
+                    
+                    // 确保模态框关闭
+                    setTimeout(() => {
+                        closeTaskModal();
+                    }, 100);
+                } catch (error) {
+                    console.error('保存任务时出错:', error);
+                    showNotification('错误', '保存任务失败', 'error');
+                }
+            });
+            
+            // 关闭任务模态框
+            document.getElementById('close-modal').addEventListener('click', closeTaskModal);
+            document.getElementById('cancel-task').addEventListener('click', closeTaskModal);
+            
+            // 共享按钮
+            document.getElementById('share-btn').addEventListener('click', generateShareLink);
+            document.getElementById('copy-link').addEventListener('click', copyShareLink);
+            document.getElementById('close-share-modal').addEventListener('click', closeShareModal);
+            document.getElementById('cancel-share').addEventListener('click', closeShareModal);
+            
+            // 关闭通知
+            document.getElementById('close-notification').addEventListener('click', hideNotification);
+            
+            // 点击模态框背景关闭模态框
+            taskModal.addEventListener('click', (e) => {
+                if (e.target === taskModal) {
+                    closeTaskModal();
+                }
+            });
+            
+            shareModal.addEventListener('click', (e) => {
+                if (e.target === shareModal) {
+                    closeShareModal();
+                }
+            });
+        }
+        
+        // 设置当前视图
+        function setCurrentView(view) {
+            currentView = view;
+            
+            // 更新视图按钮样式
+            document.querySelectorAll('.view-btn').forEach(btn => {
+                btn.classList.remove('bg-primary', 'text-white');
+                btn.classList.add('text-gray-600', 'hover:bg-gray-200');
+            });
+            
+            document.getElementById(`view-${view}`).classList.remove('text-gray-600', 'hover:bg-gray-200');
+            document.getElementById(`view-${view}`).classList.add('bg-primary', 'text-white');
+            
+            // 重新渲染日历
+            renderCalendar();
+        }
+        
+        // 工具函数：生成唯一ID
+        function generateId() {
+            return Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+        }
+        
+        // 工具函数：格式化日期为YYYY-MM-DD
+        function formatDate(date) {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+        
+        // 初始化应用
+        document.addEventListener('DOMContentLoaded', initApp);
+    </script>
+</body>
+</html>
